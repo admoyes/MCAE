@@ -1,0 +1,9 @@
+name: mcae_vs_stanosa
+docker_env:
+    image: mcae:latest
+    volumes: [
+        "/mnt/data/datasets/histopathology/CycleGAN_Generated/:/data" 
+    ]
+entry_points:
+    main:
+        command: python train.py
