@@ -2,7 +2,9 @@ name: mcae_vs_stanosa
 docker_env:
     image: mcae:latest
     volumes: [
-        "/mnt/data/datasets/histopathology/CycleGAN_Generated/:/data" 
+        "/mnt/data/datasets/histopathology/CycleGAN_Generated/:/data/triplet_dataset/" ,
+        "/mnt/data/datasets/histopathology/lung_colon_image_set/colon_image_sets/:/data/colon_images/",
+        "/mnt/data/datasets/histopathology/lung_colon_image_set/lung_image_sets/:/data/lung_images/"
     ]
 entry_points:
     main:
