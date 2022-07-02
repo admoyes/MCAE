@@ -8,7 +8,7 @@ from skimage.util import view_as_windows
 
 class TripletPatchDataset(Dataset):
 
-    def __init__(self, root_path: str, patch_size: int) -> None:
+    def __init__(self, root_path: str, patch_size: int, norm: bool) -> None:
         """
         Dataset derived from the CycleGAN-generated dataset.
         Returns corresponding triplets of image sub-patches.
@@ -23,6 +23,7 @@ class TripletPatchDataset(Dataset):
         """
         self.root_path = Path(root_path)
         self.patch_size = patch_size
+        self.norm = norm
 
         # build up paths to sub-directories for each domain
         A_dir = self.root_path / "A"
@@ -77,9 +78,11 @@ class TripletPatchDataset(Dataset):
 
         # normalise patches
         patches = patches / 255.0
-        patches_norm = self.normalise(patches)
 
-        return patches_norm
+        if self.norm:
+            patches = self.normalise(patches)
+
+        return patches
 
 
 
