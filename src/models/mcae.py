@@ -132,7 +132,7 @@ def train_mcae(
 
         epoch_losses = defaultdict(list)
 
-        for i, batch in enumerate(dataloader):
+        for i, batch in enumerate(dataloader, 0):
             batch = batch.to(torch.device(device))
 
             optim_mcae.zero_grad()
