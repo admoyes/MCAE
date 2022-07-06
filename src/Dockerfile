@@ -10,4 +10,3 @@ RUN pip install \
 	umap-learn \
 	matplotlib \
 	tqdm
-USER root
