@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from skimage.util import view_as_windows
+from einops import rearrange
 
 
 def get_patches(im: np.ndarray, patch_size: int) -> torch.FloatTensor:
@@ -10,5 +11,11 @@ def get_patches(im: np.ndarray, patch_size: int) -> torch.FloatTensor:
             (patch_size, patch_size, 3),
             step=(patch_size, patch_size, 3)
         )
+    ).squeeze()
+
+    # rearrange the patches
+    patches = rearrange(
+        patches, 
+        "r c w h f -> (r c) f w h"
     )
-    return patches.contiguous().view(-1, patch_size, patch_size, 3).permute(0, 3, 1, 2).contiguous()
+    return patches.float()

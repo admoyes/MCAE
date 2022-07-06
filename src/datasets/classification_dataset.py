@@ -1,11 +1,14 @@
 import torch
 from torch import nn
 from torch.utils.data import Dataset
+from torchvision import transforms as tf
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
 from PIL import Image
 from .utils.patches import get_patches
+from typing import Callable
+from einops import rearrange, reduce
 
 
 class ClassificationDataset(Dataset):
@@ -14,7 +17,9 @@ class ClassificationDataset(Dataset):
             image_folder: str,
             patch_size: int,
             image_file_extension: str,
-            autoencoder: nn.Module) -> None:
+            autoencoder: nn.Module,
+            patch_transform: Callable[[torch.FloatTensor], torch.FloatTensor],
+            model_call_args: dict = {}) -> None:
         """
         Dataset used for image classification. 
 
@@ -45,16 +50,31 @@ class ClassificationDataset(Dataset):
         self.image_folder = Path(image_folder)
         self.patch_size = patch_size
         self.autoencoder = autoencoder
+        self.patch_transform = patch_transform
+        self.model_call_args = model_call_args
         
         # find all the classes
         class_folders = list(self.image_folder.iterdir())
 
         # find images belonging to each class
-        class_paths = defaultdict[list]
+        class_paths = defaultdict(list)
         for class_folder in class_folders:
             class_name = class_folder.name
             class_image_paths = list(class_folder.glob(f"*.{image_file_extension}"))
             class_paths[class_name] = class_image_paths
+
+        # build a list of examples and their classes
+        self.class_names = list(class_paths.keys())
+        self.examples = []
+        for class_name, class_path_list in class_paths.items():
+
+            # create a list of <image_path, class_index> pairs.
+            class_index = self.class_names.index(class_name)
+            class_indices = [class_index] * len(class_path_list)
+            class_examples = zip(class_path_list, class_indices)
+            
+            # save to examples list
+            self.examples.extend(class_examples)
 
     
     def process_image(self, image_path: Path) -> torch.FloatTensor:
@@ -68,13 +88,26 @@ class ClassificationDataset(Dataset):
         # extract patches
         patches = get_patches(im, self.patch_size)
 
+        # insert batch and domain dimensions so it can be passed through the model
+        patches = rearrange(patches, "p f w h -> 1 p 1 f w h")
+
         # convert patches into features
         with torch.no_grad():
-            features = self.autoencoder.encode(patches)
+            features, _ = self.autoencoder(patches, **self.model_call_args)
+            # reduce unnecessary dimensions
+            features = features.squeeze()
          
         # average patch features into image-level feature 
-        image_feature = features.mean(dim=0)
+        image_feature = reduce(features, "b f -> f", "mean")
 
         # return feature vector
         return image_feature
 
+
+    def __len__(self):
+        return len(self.examples)
+
+
+    def __getitem__(self, index):
+        image_path, class_index = self.examples[index]
+        return self.process_image(image_path), class_index
