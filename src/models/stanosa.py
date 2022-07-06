@@ -8,6 +8,7 @@ from torch.nn import functional as F
 from collections import defaultdict
 import mlflow
 from typing import Tuple
+from tqdm import tqdm
 
 
 class StaNoSA(nn.Module):
@@ -84,6 +85,9 @@ def train_stanosa(
     zca_n_samples: int = 50_000
 ) -> StaNoSA:
 
+    run = mlflow.active_run()
+    print(f"StaNoSA Training")
+
     # compute ZCA components
     sample = sample_from_dataloader(dataloader, domain_index, zca_n_samples)
     zca_mean, zca_components = compute_zca_matrix(sample)
@@ -96,7 +100,7 @@ def train_stanosa(
     optim_stanosa = optim.Adam(model.parameters(), lr=learning_rate)
 
     # start training loop
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs), total=epochs, desc="epoch"):
 
         epoch_losses = defaultdict(list)
 
@@ -124,4 +128,5 @@ def train_stanosa(
             avg = torch.FloatTensor(values).mean().item()
             mlflow.log_metric(key, avg, step=epoch)
 
-    return model
+    # log model to mlflow
+    mlflow.pytorch.log_model(model, "model")

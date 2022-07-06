@@ -1,3 +1,4 @@
+from enum import auto
 import torch
 from torch import nn, optim
 from einops import rearrange
@@ -68,11 +69,13 @@ class MultiChannelAutoEncoderLinear(nn.Module):
             else:
                 # otherwise create the default value
                 # this will route domains to autoencoders in the standard order-based fashion.
-                index = torch.arange(n_domains)
+                index = torch.arange(n_domains).long()
         else:
             # make sure the length of `index` is equal to `n_domains`
             if len(index) != n_domains:
                 raise ValueError(f"len(index) ({len(index)}) != n_domains ({n_domains})")
+
+            index = index.long()
 
         # flatten the patches into vectors
         x_flat = rearrange(x, "b p d c h w -> (b p) d (c h w)")
@@ -84,6 +87,7 @@ class MultiChannelAutoEncoderLinear(nn.Module):
         all_encoded = []
         all_reconstructed = []
         for domain_x, i in zip(domains, index):
+            i = i.item() # convert to an int
             encoded, reconstructed = self.auto_encoders[i](domain_x)
             all_encoded.append(encoded)
             all_reconstructed.append(reconstructed)
@@ -112,9 +116,9 @@ class MultiChannelAutoEncoderLinear(nn.Module):
         loss = mse_loss + feature_activation_loss + variance
 
         return loss, {
-            "reconstruction": mse_loss,
-            "feature_magnitude": feature_activation_loss,
-            "feature_variation": variance
+            "reconstruction": mse_loss.detach().item(),
+            "feature_magnitude": feature_activation_loss.detach().item(),
+            "feature_variation": variance.detach().item()
         } 
 
 def train_mcae(
@@ -125,8 +129,15 @@ def train_mcae(
     learning_rate: float = 0.0001
 ) -> MultiChannelAutoEncoderLinear:
 
+    run = mlflow.active_run()
+    print(f"MCAE/DCAE Training")
+
     model = MultiChannelAutoEncoderLinear(num_domains).to(torch.device(device))
-    optim_mcae = optim.Adam(model.parameters(), lr=learning_rate)
+    # build optimisers
+    optims = []
+    for auto_encoder in model.auto_encoders:
+        optim_ae = optim.Adam(auto_encoder.parameters(), lr=learning_rate)
+    #optim_mcae = optim.Adam(model.parameters(), lr=learning_rate)
 
     for epoch in range(epochs):
 
@@ -135,13 +146,18 @@ def train_mcae(
         for i, batch in enumerate(dataloader, 0):
             batch = batch.to(torch.device(device))
 
-            optim_mcae.zero_grad()
+            for opt in optims:
+                opt.zero_grad()
+
             encoded, reconstructed = model(batch)
             loss, loss_dict = model.calculate_loss(batch, reconstructed, encoded)
             
             # update weights
             loss.backward()
-            optim_mcae.step()
+
+            for opt in optims:
+                opt.step()
+            #optim_mcae.step()
 
             # save loss values
             for key, value in loss_dict.items():
@@ -151,4 +167,8 @@ def train_mcae(
             avg = torch.FloatTensor(values).mean().item()
             mlflow.log_metric(key, avg, step=epoch)
 
-    return model
+    # log model to mlflow
+    mlflow.pytorch.log_model(model, "model")
+
+    # clear GPU
+    #torch.cuda.empty_cache()
