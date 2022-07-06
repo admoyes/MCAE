@@ -1,7 +1,13 @@
-FROM pytorch/pytorch:1.11.0-cuda11.3-cudnn8-devel
+FROM pytorch/pytorch:1.12.0-cuda11.3-cudnn8-devel
+RUN apt update
+RUN apt install git -y
 RUN pip install \
 	scikit-image \
 	einops \
 	pillow \
 	numpy \
-	mlflow
+	mlflow \
+	umap-learn \
+	matplotlib \
+	tqdm
+USER root
