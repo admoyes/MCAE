@@ -1,12 +1,16 @@
 from enum import auto
 import torch
 from torch import nn, optim
+from torch.utils.data import DataLoader
 from einops import rearrange
 from .linear_autoencoder import AutoEncoder
 from torch.nn import functional as F
 from typing import Tuple
 import mlflow
 from collections import defaultdict
+from .utils import load_model
+from .classifiers import classifier_eval
+from datasets import ClassificationDataset
 
 
 class MultiChannelAutoEncoderLinear(nn.Module):
@@ -56,6 +60,13 @@ class MultiChannelAutoEncoderLinear(nn.Module):
             Tensor of reconstructed patches. [batch size, channels, patches, features, width, height]
         """
 
+        #print("MCAE")
+        #print("x", x.shape, flush=True)
+
+        if len(x.shape) == 5:
+            # x doesn't have a domain dimension - add one in
+            x = rearrange(x, "b p c w h -> b p 1 c w h")
+
         # deconstruct tensor shape
         batch_size, n_patches, n_domains, n_colour_channels, patch_width, patch_height = x.shape
 
@@ -104,13 +115,15 @@ class MultiChannelAutoEncoderLinear(nn.Module):
         return all_encoded, all_reconstructed
 
     def calculate_loss(self, x, reconstructed, encoded) -> Tuple[torch.FloatTensor, dict]:
+        print("calculate loss")
+        print("x", x.shape, "recon", reconstructed.shape)
 
         mse_loss = F.mse_loss(reconstructed, x)
         feature_activation_loss = 0.01 * encoded.pow(2).mean()
 
         # calculate feature loss
         encoded_flat = rearrange(encoded, "b p d l -> (b p l) d")
-        variance = encoded_flat.var(dim=1).mean()
+        variance = 0.01 * encoded_flat.var(dim=1).mean()
 
         # combine losses
         loss = mse_loss + feature_activation_loss + variance
@@ -172,3 +185,46 @@ def train_mcae(
 
     # clear GPU
     #torch.cuda.empty_cache()
+
+
+
+def eval_mcae(
+    data_path: str,
+    classifier_name: str,
+    training_experiment_name: str,
+    training_run_name: str,
+    batch_size: int,
+    patch_size: int,
+    domain_index: int,
+    num_samples: int = 10
+):
+
+    # load model from mlflow
+    model = load_model(training_experiment_name, training_run_name)
+
+    # define the classification dataset and dataloader
+    lung_dataset = ClassificationDataset(
+        image_folder=data_path,
+        patch_size=patch_size,
+        image_file_extension="jpeg",
+        autoencoder=model,
+        patch_transform=None,
+        model_call_args={
+            "index": torch.zeros(1).fill_(domain_index).long()
+        }
+    )
+    
+    dataloader = DataLoader(lung_dataset, batch_size=batch_size, shuffle=True)
+
+    # load all the features and labels into memory
+    all_features = []
+    all_labels = []
+    for x, y in dataloader:
+        all_features.append(x)
+        all_labels.append(y)
+
+    all_features = torch.cat(all_features, dim=0).numpy()
+    all_labels = torch.cat(all_labels, dim=0).numpy()
+
+    # perform eval with classifier
+    classifier_eval(classifier_name, all_features, all_labels)
