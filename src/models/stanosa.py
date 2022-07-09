@@ -1,14 +1,20 @@
 import torch
 from torch import nn, optim
+from torch.utils.data import DataLoader
+from torchvision import transforms as tf
 from einops import rearrange
 from .linear_autoencoder import AutoEncoder
 from datasets.utils.ZCA import compute_zca_matrix, apply_zca_to_batch
 from datasets.utils.sample import sample_from_dataloader
+from datasets.utils.norm import global_contrast_normalisation
+from datasets import BasicPatchDataset, ClassificationDataset
 from torch.nn import functional as F
 from collections import defaultdict
 import mlflow
 from typing import Tuple
 from tqdm import tqdm
+from .utils import load_model
+from .classifiers import classifier_eval
 
 
 class StaNoSA(nn.Module):
@@ -130,3 +136,81 @@ def train_stanosa(
 
     # log model to mlflow
     mlflow.pytorch.log_model(model, "model")
+
+
+def eval_stanosa(
+    data_path: str, 
+    classifier_name: str,
+    training_experiment_name: str,
+    training_run_name: str,
+    batch_size: int,
+    patch_size: int,
+    n_samples=10,
+):
+
+    # ZCA components need to be calculated for the basic classification dataset
+    # start by sampling a number of patches from the dataset
+    print("building BasicPatchDataset")
+    patch_dataset = BasicPatchDataset(
+        image_folder=data_path,
+        patch_size=patch_size,
+        image_file_extension="jpeg",
+        patch_transform=tf.Compose([
+            tf.Lambda(lambda patches: global_contrast_normalisation(patches)),
+            tf.Lambda(lambda patches: rearrange(patches, "p f w h -> p 1 f w h"))
+        ])
+    )
+    patch_dataloader = DataLoader(
+        patch_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=6
+    )
+
+    # sample patches from the dataloader
+    samples = []
+    with tqdm(total=n_samples, desc="samples for ZCA") as prog:
+        for batch in patch_dataloader:
+            batch = batch.squeeze()
+            batch_flat = rearrange(batch, "b p f w h -> (b p) (f w h)")
+            idx = torch.randperm(len(batch_flat))
+            batch_sample = batch_flat[idx][:100]
+            samples.append(batch_sample)
+            prog.update(len(batch_sample))
+            if len(samples) >= n_samples:
+                break
+    samples = torch.cat(samples, dim=0)
+
+    # compute ZCA components
+    zca_mean, zca_components = compute_zca_matrix(samples)
+
+    # load model from mlflow
+    model = load_model(training_experiment_name, training_run_name)
+
+    # set the ZCA parameters
+    model.zca_mean = zca_mean
+    model.zca_components = zca_components
+
+    # define the classification dataset and dataloader 
+    lung_dataset = ClassificationDataset(
+        image_folder=data_path,
+        patch_size=patch_size,
+        image_file_extension="jpeg",
+        autoencoder=model,
+        patch_transform=tf.Lambda(lambda patches: global_contrast_normalisation(patches))
+    )
+
+    dataloader = DataLoader(lung_dataset, batch_size=batch_size, shuffle=True, num_workers=6)
+
+    # load all the features and labels into memory
+    all_features = []
+    all_labels = []
+    for x, y in dataloader:
+        all_features.append(x)
+        all_labels.append(y)
+    
+    all_features = torch.cat(all_features, dim=0).numpy()
+    all_labels = torch.cat(all_labels, dim=0).numpy()
+    
+    # perform eval with classifier
+    classifier_eval(classifier_name, all_features, all_labels)
