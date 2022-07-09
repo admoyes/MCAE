@@ -45,6 +45,9 @@ def sample_from_dataloader(
         # save sample
         sample.append(batch_sample)
 
+        if len(sample) >= 2 * num_samples:
+            break
+
     # concatenate all samples into a single matrix
     sample = torch.cat(sample, dim=0)
 

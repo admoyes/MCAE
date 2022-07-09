@@ -4,6 +4,8 @@ from pathlib import Path
 from PIL import Image
 import numpy as np
 from skimage.util import view_as_windows
+from .utils.patches import get_patches
+from collections import defaultdict
 
 
 class TripletPatchDataset(Dataset):
@@ -53,7 +55,7 @@ class TripletPatchDataset(Dataset):
         return patches.contiguous().view(-1, self.patch_size, self.patch_size, 3).permute(0, 3, 1, 2).contiguous()
 
     def load_image_as_patches(self, path: str) -> torch.FloatTensor:
-        im = np.array(Image.open(path))
+        im = np.array(Image.open(path).convert("RGB")).astype(float)
         patches = self.get_patches(im)
         return patches
 
@@ -75,7 +77,7 @@ class TripletPatchDataset(Dataset):
         # stack patches into a single tensor
         patches = torch.stack([
             patches_a, patches_b, patches_c
-        ], dim=1)
+        ], dim=1).float()
 
         # normalise patches
         patches = patches / 255.0
@@ -91,4 +93,64 @@ class TripletPatchDataset(Dataset):
 
 
     
+class BasicPatchDataset(Dataset):
 
+    def __init__(self,
+            image_folder: str,
+            patch_size: int,
+            image_file_extension: str,
+            patch_transform=None) -> None:
+
+        self.image_folder = Path(image_folder)
+        self.patch_size = patch_size
+        self.patch_transform = patch_transform
+        
+        # find all the classes
+        class_folders = list(self.image_folder.iterdir())
+
+        # find images belonging to each class
+        class_paths = defaultdict(list)
+        for class_folder in class_folders:
+            class_name = class_folder.name
+            class_image_paths = list(class_folder.iterdir())
+            class_paths[class_name] = class_image_paths
+
+        # build a list of examples and their classes
+        self.class_names = list(class_paths.keys())
+        self.examples = []
+        for class_name, class_path_list in class_paths.items():
+
+            # create a list of <image_path, class_index> pairs.
+            class_index = self.class_names.index(class_name)
+            class_indices = [class_index] * len(class_path_list)
+            class_examples = list(zip(class_path_list, class_indices))
+            
+            # save to examples list
+            self.examples.extend(class_examples)
+
+    def process_image(self, image_path: Path) -> torch.FloatTensor:
+        """
+        Convert the image at the given path into a feature vector. 
+        """
+
+        # load the image
+        im = np.array(Image.open(image_path).convert("RGB")).astype(float)
+        im = im / 255.0
+
+        # extract patches
+        patches = get_patches(im, self.patch_size)
+
+        return patches
+
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, index):
+        image_path, class_index = self.examples[index]
+        patches = self.process_image(image_path)
+
+        if self.patch_transform is not None:
+            patches = self.patch_transform(patches)
+
+        return patches

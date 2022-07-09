@@ -9,6 +9,7 @@ from PIL import Image
 from .utils.patches import get_patches
 from typing import Callable
 from einops import rearrange, reduce
+from collections import Counter
 
 
 class ClassificationDataset(Dataset):
@@ -60,11 +61,11 @@ class ClassificationDataset(Dataset):
         class_paths = defaultdict(list)
         for class_folder in class_folders:
             class_name = class_folder.name
-            class_image_paths = list(class_folder.glob(f"*.{image_file_extension}"))
+            class_image_paths = list(class_folder.iterdir())
             class_paths[class_name] = class_image_paths
 
         # build a list of examples and their classes
-        self.class_names = list(class_paths.keys())
+        self.class_names = list(sorted(class_paths.keys()))
         self.examples = []
         for class_name, class_path_list in class_paths.items():
 
@@ -76,6 +77,10 @@ class ClassificationDataset(Dataset):
             # save to examples list
             self.examples.extend(class_examples)
 
+        # count labels 
+        class_counts = Counter([ex[1] for ex in self.examples])
+        print(class_counts, flush=True)
+
     
     def process_image(self, image_path: Path) -> torch.FloatTensor:
         """"
@@ -83,17 +88,27 @@ class ClassificationDataset(Dataset):
         """
 
         # load the image
-        im = np.array(Image.open(image_path))
+        im = np.array(Image.open(image_path).convert("RGB")).astype(float)
+        im = im / 255.0
+        #print("im", im.shape)
 
         # extract patches
         patches = get_patches(im, self.patch_size)
+        #print("patches", patches.shape)
+
+        # apply a transform
+        # e.g. global contrast normalisation for StaNoSA
+        if self.patch_transform is not None:
+            patches = self.patch_transform(patches)
 
         # insert batch and domain dimensions so it can be passed through the model
-        patches = rearrange(patches, "p f w h -> 1 p 1 f w h")
+        patches = rearrange(patches, "p f w h -> 1 p f w h")
+        #print("patches", patches.shape)
 
         # convert patches into features
         with torch.no_grad():
             features, _ = self.autoencoder(patches, **self.model_call_args)
+            #print("features", features.shape)
             # reduce unnecessary dimensions
             features = features.squeeze()
          
