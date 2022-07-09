@@ -9,4 +9,5 @@ RUN pip install \
 	mlflow \
 	umap-learn \
 	matplotlib \
-	tqdm
+	tqdm \
+	xgboost
