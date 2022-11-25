@@ -5,6 +5,7 @@ This repository contains the code required to build, train and evalute the MCAE 
 The following will need to be installed manually.
 - [Docker](https://www.docker.com/get-started/)
 - [nvidia-docker](https://github.com/NVIDIA/nvidia-docker)
+- `mlflow` (`pip install mlflow`)
 
 ## Getting Started
 Running the code should be as simple as:
