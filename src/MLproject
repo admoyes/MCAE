@@ -1,0 +1,14 @@
+name: mcae_vs_stanosa
+docker_env:
+    image: mcae:latest
+    volumes: [
+        "/mnt/data/datasets/histopathology/CycleGAN_Generated/:/data/triplet_dataset/" ,
+        "/mnt/data/datasets/histopathology/lung_colon_image_set/colon_image_sets/:/data/colon/",
+        "/mnt/data/datasets/histopathology/lung_colon_image_set/lung_image_sets/:/data/lung/",
+        "/mnt/data/datasets/histopathology/Kather/NCT-CRC-HE-100K-NONORM/:/data/kather/"
+    ]
+entry_points:
+    main:
+        command: python train.py
+    eval:
+        command: python eval.py

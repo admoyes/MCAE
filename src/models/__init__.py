@@ -1,0 +1,1 @@
+from .mcae import MultiChannelAutoEncoderLinear
