@@ -13,7 +13,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--model-type", type=str, required=True, help="mcae or stanosa or dcae")
 parser.add_argument("--epochs", type=int, default=100, help="num training epochs")
-parser.add_argument("--batch-size", type=int, default=32, help="batch size")
+parser.add_argument("--batch-size", type=int, default=256, help="batch size")
 parser.add_argument("--patch-size", type=int, default=8, help="patch size")
 parser.add_argument("--num-workers", type=int, default=6, help="num workers for data loader")
 parser.add_argument("--domain-index-1", type=str, default=-1, help="first DCAE/StaNoSA domain")
