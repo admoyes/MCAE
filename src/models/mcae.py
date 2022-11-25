@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from typing import Tuple
 import mlflow
 from collections import defaultdict
-from .utils import load_model
+from .utils import load_model, log_image
 from .classifiers import classifier_eval
 from datasets import ClassificationDataset
 
@@ -89,7 +89,7 @@ class MultiChannelAutoEncoderLinear(nn.Module):
             index = index.long()
 
         # flatten the patches into vectors
-        x_flat = rearrange(x, "b p d c h w -> (b p) d (c h w)")
+        x_flat = rearrange(x, "b p d c w h -> (b p) d (c w h)")
 
         # unbind x along the `channels` dimension so we go from a single tensor to a list of tensors
         domains = torch.unbind(x_flat, 1)
@@ -115,15 +115,17 @@ class MultiChannelAutoEncoderLinear(nn.Module):
         return all_encoded, all_reconstructed
 
     def calculate_loss(self, x, reconstructed, encoded) -> Tuple[torch.FloatTensor, dict]:
-        print("calculate loss")
-        print("x", x.shape, "recon", reconstructed.shape)
+        #print("calculate loss")
+        #print("x", x.shape, "recon", reconstructed.shape, "encoded", encoded.shape)
+        #print(f"[x] min: {x.min().item()} max: {x.max().item()}")
+        #print(f"[reconstructed] min: {reconstructed.min().item()} max: {reconstructed.max().item()}", flush=True)
 
         mse_loss = F.mse_loss(reconstructed, x)
         feature_activation_loss = 0.01 * encoded.pow(2).mean()
 
         # calculate feature loss
         encoded_flat = rearrange(encoded, "b p d l -> (b p l) d")
-        variance = 0.01 * encoded_flat.var(dim=1).mean()
+        variance = encoded_flat.var(dim=1).mean()
 
         # combine losses
         loss = mse_loss + feature_activation_loss + variance
@@ -146,11 +148,12 @@ def train_mcae(
     print(f"MCAE/DCAE Training")
 
     model = MultiChannelAutoEncoderLinear(num_domains).to(torch.device(device))
+
     # build optimisers
     optims = []
     for auto_encoder in model.auto_encoders:
         optim_ae = optim.Adam(auto_encoder.parameters(), lr=learning_rate)
-    #optim_mcae = optim.Adam(model.parameters(), lr=learning_rate)
+        optims.append(optim_ae)
 
     for epoch in range(epochs):
 
@@ -170,7 +173,6 @@ def train_mcae(
 
             for opt in optims:
                 opt.step()
-            #optim_mcae.step()
 
             # save loss values
             for key, value in loss_dict.items():
@@ -179,6 +181,19 @@ def train_mcae(
         for key, values in epoch_losses.items():
             avg = torch.FloatTensor(values).mean().item()
             mlflow.log_metric(key, avg, step=epoch)
+
+        # log images
+        batch_idx = torch.randperm(batch.shape[0])[:100]
+        patch_idx = torch.randperm(batch.shape[1])[:100]
+        batch_sample = batch[batch_idx, patch_idx].detach()
+        for d, domain_batch_sample in enumerate(torch.unbind(batch_sample, 1)):
+            domain_batch_sample = rearrange(domain_batch_sample, "b f w h -> b w h f")
+            log_image(domain_batch_sample, f"domain_{d}_batch.png")
+
+        recon_sample = reconstructed[batch_idx, patch_idx].detach()
+        for d, domain_recon_sample in enumerate(torch.unbind(recon_sample, 1)):
+            domain_recon_sample = rearrange(domain_recon_sample, "b f w h -> b w h f")
+            log_image(domain_recon_sample, f"domain_{d}_recon.png")
 
     # log model to mlflow
     mlflow.pytorch.log_model(model, "model")
