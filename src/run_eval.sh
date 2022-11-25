@@ -55,16 +55,3 @@ run_eval dcae_bc_c dcae_bc dcae 1
 run_eval mcae_a mcae mcae 0
 run_eval mcae_b mcae mcae 1
 run_eval mcae_c mcae mcae 2
-
-
-#mlflow run . \
-#	-e eval \
-#	--experiment-name eval \
-#	--run-name stanosa_a \
-#	--docker-args gpus=all \
-#	--docker-args shm-size=2G \
-#	-P model-type=stanosa \
-#	-P classifier=xgboost \
-#	-P training-experiment-name=training \
-#	-P training-run-name=stanosa_a
-#
