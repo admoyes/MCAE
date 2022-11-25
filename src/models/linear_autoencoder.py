@@ -6,7 +6,7 @@ from typing import Tuple
 
 class AutoEncoder(nn.Module):
 
-    def __init__(self, input_dim=192, hidden_dim=100, output_dim=10, hidden_activation=nn.ReLU, output_activation=None, hidden_dropout=0.2) -> None:
+    def __init__(self, input_dim=192, hidden_dim=100, output_dim=10, hidden_activation=nn.Tanh, output_activation=nn.Tanh, hidden_dropout=0.2) -> None:
         """Basic linear auto encoder class.
 
         Parameters
