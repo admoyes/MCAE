@@ -1,3 +1,4 @@
+from random import shuffle
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
@@ -6,11 +7,11 @@ import numpy as np
 from skimage.util import view_as_windows
 from .utils.patches import get_patches
 from collections import defaultdict
-
+torch.manual_seed(0)
 
 class TripletPatchDataset(Dataset):
 
-    def __init__(self, root_path: str, patch_size: int, norm: bool, transform=None) -> None:
+    def __init__(self, root_path: str, patch_size: int, norm: bool, transform=None, shuffle_patches=True) -> None:
         """
         Dataset derived from the CycleGAN-generated dataset.
         Returns corresponding triplets of image sub-patches.
@@ -27,6 +28,7 @@ class TripletPatchDataset(Dataset):
         self.patch_size = patch_size
         self.norm = norm
         self.transform = transform
+        self.shuffle_patches = shuffle_patches
 
         # build up paths to sub-directories for each domain
         A_dir = self.root_path / "A"
@@ -81,6 +83,10 @@ class TripletPatchDataset(Dataset):
 
         # normalise patches
         patches = patches / 255.0
+
+        # shuffle patches
+        patch_idx = torch.randperm(patches.shape[0])
+        patches = patches[patch_idx]
 
         if self.norm:
             patches = self.normalise(patches)
