@@ -1,5 +1,7 @@
 import mlflow
 from mlflow.tracking.client import MlflowClient
+from math import sqrt
+from einops import rearrange
 
 
 def load_model(
@@ -27,3 +29,34 @@ def load_model(
     model = mlflow.pytorch.load_model(model_url).cpu()
 
     return model
+
+
+
+def log_image(x, path, norm=True):
+    """
+    Log image to mlflow.
+
+    Parameters
+    ----------
+    x: torch.FloatTensor
+        image to save. Shape=[w, h, c] or [b, w, h, c].
+        if batch of images, b must be square.
+    """
+
+    if x.shape[-1] != 3:
+        raise ValueError(f"expected 3 channels but got {x.shape[-1]}")
+
+    if len(x.shape) == 4:
+        x = rearrange(
+            x, 
+            "(b1 b2) w h c -> (b1 w) (b2 h) c",
+            b1=int(sqrt(x.shape[0]))
+        )
+
+    if norm:
+        x += 1
+        x /= 2
+    
+    x = x.detach().cpu().numpy()
+
+    mlflow.log_image(x, path)
